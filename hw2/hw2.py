@@ -18,17 +18,31 @@ def hw2_1(args):
 
     a = img.width / img.height
     def to_screen(p):
-        # HW2.1: implement this
-        # access "s" using args.s
-        return (0.0, 0.0)
+        # Project 3D point to 2D
+        x = -p[0] / p[2]
+        y = -p[1] / p[2]
+
+        # Convert to screen coordinates
+        screen_x = img.width * (x + args.s * a) / (2 * args.s * a)
+        screen_y = img.height * (args.s - y) / (2 * args.s)
+
+        return (screen_x, screen_y)
 
     sp0 = to_screen(args.p0)
     sp1 = to_screen(args.p1)
     sp2 = to_screen(args.p2)
 
-    # HW2.1: implement this
-    aabb_min = (0, 0)
-    aabb_max = (10, 10)
+    # Find the minimum coordinates 
+    aabb_min = (
+        max(0, math.floor(min(sp0[0], sp1[0], sp2[0]))), 
+        max(0, math.floor(min(sp0[1], sp1[1], sp2[1])))
+    )
+
+    # Find the maximum coordinates 
+    aabb_max = (
+        min(img.width - 1, math.ceil(max(sp0[0], sp1[0], sp2[0]))), 
+        min(img.height - 1, math.ceil(max(sp0[1], sp1[1], sp2[1])))
+    )
 
     vars = {'sp0': sp0,
             'sp1': sp1,
