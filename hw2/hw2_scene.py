@@ -187,10 +187,81 @@ def compose_transformations(transformations):
     F = np.eye(4, dtype=np.float32)
 
     for transform in transformations:
-        pass
-        # HW 2.3 TODO: your code here
+        T = np.eye(4, dtype=np.float32)
+
+        if 'scale' in transform:
+            sx, sy, sz = transform['scale']
+
+            T[0, 0] = sx
+            T[1, 1] = sy
+            T[2, 2] = sz
+
+        elif 'translate' in transform:
+            tx, ty, tz = transform['translate']
+
+            T[0, 3] = tx
+            T[1, 3] = ty
+            T[2, 3] = tz
+
+        elif 'rotate_x' in transform:
+            angle = math.radians(transform['rotate_x'][0])
+            c = math.cos(angle)
+            s = math.sin(angle)
+
+            T[1, 1] = c
+            T[1, 2] = -s
+            T[2, 1] = s
+            T[2, 2] = c
+
+        elif 'rotate_y' in transform:
+            angle = math.radians(transform['rotate_y'][0])
+            c = math.cos(angle)
+            s = math.sin(angle)
+
+            T[0, 0] = c
+            T[0, 2] = s
+            T[2, 0] = -s
+            T[2, 2] = c
+
+        elif 'rotate_z' in transform:
+            angle = math.radians(transform['rotate_z'][0])
+            c = math.cos(angle)
+            s = math.sin(angle)
+
+            T[0, 0] = c
+            T[0, 1] = -s
+            T[1, 0] = s
+            T[1, 1] = c
+
+        elif 'lookat' in transform:
+            params = transform['lookat']
+
+            position = np.array(params['position'], dtype=np.float32)
+            target = np.array(params['target'], dtype=np.float32)
+            up = np.array(params['up'], dtype=np.float32)
+
+            # Direction from camera to target
+            d = target - position
+            d = d / np.linalg.norm(d)
+
+            # Camera's right direction
+            r = np.cross(d, up)
+            r = r / np.linalg.norm(r)
+
+            # Corrected up direction
+            u = np.cross(r, d)
+
+            # Construct camera-to-world matrix
+            T[:3, 0] = r
+            T[:3, 1] = u
+            T[:3, 2] = -d
+            T[:3, 3] = position
+
+        # Apply transformations in the order listed
+        F = T @ F
 
     return F
+
 
 def parse_scene(filename : str) -> Scene:
     scene_dir = os.path.dirname(filename)

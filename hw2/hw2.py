@@ -210,11 +210,29 @@ def hw2_3(args):
 
     # HW 2.3: implement this
     # change np.zeros into the right matrices
-    projection = np.zeros((4, 4), dtype=np.float32)
-    camera_to_screen = np.zeros((4, 4), dtype=np.float32)
-    # use camera.cam_to_world
-    view_matrix = np.zeros((4, 4), dtype=np.float32)
-    world_to_screen = np.zeros((4, 4), dtype=np.float32)
+    
+    # Perspective projection matrix
+    projection = np.array([
+        [1, 0, 0, 0],
+        [0, 1, 0, 0],
+        [0, 0, 0, 1],
+        [0, 0, -1, 0]
+    ], dtype=np.float32)
+
+    # Convert projected coordinates into screen coordinates
+    camera_to_screen = np.array([
+        [width / (2 * camera.s * a), 0, 0, width / 2],
+        [0, -height / (2 * camera.s), 0, height / 2],
+        [0, 0, 1, 0],
+        [0, 0, 0, 1]
+    ], dtype=np.float32)
+
+    # Convert world space to camera space
+    view_matrix = np.linalg.inv(camera.cam_to_world)
+
+    # Combine the matrices
+    world_to_screen = camera_to_screen @ projection @ view_matrix
+
     
     screen_vertices_list = []
     inv_depth_list = []
@@ -222,7 +240,7 @@ def hw2_3(args):
         # HW 2.3: implement this
         # change np.zeros into the right matrix
         # use mesh.model_matrix
-        MVP = np.zeros((4, 4), dtype=np.float32)
+        MVP = world_to_screen @ mesh.model_matrix
         ones = np.ones((mesh.vertices.shape[0], 1), dtype=mesh.vertices.dtype)
         vertices = np.concatenate(
             [mesh.vertices, ones],
@@ -235,6 +253,11 @@ def hw2_3(args):
         # ---
         # HW 2.3: your code here
         # ---
+        # Apply the combined transformation to every vertex
+        vertices = (MVP @ vertices.T).T
+
+        # Divide by the homogeneous coordinate
+        vertices = vertices[:, :3] / vertices[:, 3:4]
         inv_depth_list.append(np.ascontiguousarray(vertices[:, 2]))
         screen_vertices_list.append(np.ascontiguousarray(vertices[:, :2]))
 
@@ -259,6 +282,36 @@ def hw2_3(args):
             for tri_id in range(mesh.faces.shape[0]):
                 # HW 2.3: implement this
                 # (basically the same as HW 2.2)
+
+                # Get the three vertex indices
+                i0, i1, i2 = mesh.faces[tri_id]
+
+                # Get the screen coordinates
+                sp0 = screen_vertices[i0]
+                sp1 = screen_vertices[i1]
+                sp2 = screen_vertices[i2]
+
+                # Get inverse depths
+                inv_depth0 = inv_depth[i0]
+                inv_depth1 = inv_depth[i1]
+                inv_depth2 = inv_depth[i2]
+
+                # Calculate the bounding box
+                aabb_min = (
+                    max(0, math.floor(min(sp0[0], sp1[0], sp2[0]))),
+                    max(0, math.floor(min(sp0[1], sp1[1], sp2[1])))
+                )
+
+                aabb_max = (
+                    min(width - 1, math.ceil(max(sp0[0], sp1[0], sp2[0]))),
+                    min(height - 1, math.ceil(max(sp0[1], sp1[1], sp2[1])))
+                )
+
+                # Get the vertex colors
+                c0 = mesh.vertex_colors[i0]
+                c1 = mesh.vertex_colors[i1]
+                c2 = mesh.vertex_colors[i2]
+
 
                 if aabb_min[0] > aabb_max[0] or aabb_min[1] > aabb_max[1]:
                     continue
