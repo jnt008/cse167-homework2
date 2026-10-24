@@ -359,10 +359,61 @@ def interpolate_transformation(transform_keyframes, t):
     #
     # Return a list of transformations in the same format
     # as the "transform" field in the scene JSON.
-    interp_transforms = []
+    # If there are no keyframes, return an empty list
+    if not transform_keyframes:
+        return []
 
-    return interp_transforms
+    # Find the two keyframes surrounding t
+    for i in range(len(transform_keyframes) - 1):
+        k0 = transform_keyframes[i]
+        k1 = transform_keyframes[i + 1]
+
+        t0 = k0['time']
+        t1 = k1['time']
+
+        if t0 <= t <= t1:
+            # Calculate interpolation factor
+            alpha = (t - t0) / (t1 - t0)
+
+            interp_transforms = []
+
+            # Interpolate each corresponding transformation
+            for trans0, trans1 in zip(k0['transform'], k1['transform']):
+                transform_type = list(trans0.keys())[0]
+
+                v0 = trans0[transform_type]
+                v1 = trans1[transform_type]
+
+                if transform_type == 'lookat':
+                    result = {}
+
+                    for key in ['position', 'target', 'up']:
+                        a = np.array(v0[key], dtype=np.float32)
+                        b = np.array(v1[key], dtype=np.float32)
+
+                        result[key] = (
+                            (1 - alpha) * a + alpha * b
+                        ).tolist()
+
+                else:
+                    a = np.array(v0, dtype=np.float32)
+                    b = np.array(v1, dtype=np.float32)
+
+                    result = (
+                        (1 - alpha) * a + alpha * b
+                    ).tolist()
+
+                interp_transforms.append({
+                    transform_type: result
+                })
+
+            return interp_transforms
+
+    # If t is outside the keyframe interval
+    return transform_keyframes[-1]['transform']
+
     
+
 def hw2_4(args):
     slang_device = spy.create_device()
     compute_shader = device.load_compute_shader(slang_device, 'hw2/hw2_2.slang')
@@ -375,84 +426,173 @@ def hw2_4(args):
 
     a = width / height
 
-    # HW 2.4 TODO: implement this (basically the same as 2.3)
-    # change np.zeros into the right matrices
-    projection = np.zeros((4, 4), dtype=np.float32)
-    camera_to_screen = np.zeros((4, 4), dtype=np.float32)
+    # Perspective projection matrix
+    projection = np.array([
+        [1, 0, 0, 0],
+        [0, 1, 0, 0],
+        [0, 0, 0, 1],
+        [0, 0, -1, 0]
+    ], dtype=np.float32)
+
+    # Convert projected coordinates to screen coordinates
+    camera_to_screen = np.array([
+        [width / (2 * camera.s * a), 0, 0, width / 2],
+        [0, -height / (2 * camera.s), 0, height / 2],
+        [0, 0, 1, 0],
+        [0, 0, 0, 1]
+    ], dtype=np.float32)
 
     def render_frame(command_encoder, t):
         t = t % scene.duration
-        # HW 2.4 TODO: insert your code here and fill in world_to_screen
-        # by using interpolate_transformation to compute the view matrix at time t
-        world_to_screen = np.zeros((4, 4), dtype=np.float32)
-        
+
+        # Compute animated camera transformation
+        if camera.transform_keyframes:
+            transforms = interpolate_transformation(
+                camera.transform_keyframes, t
+            )
+            cam_to_world = hw2_scene.compose_transformations(transforms)
+        else:
+            cam_to_world = camera.cam_to_world
+
+        # Convert world space to camera space
+        view_matrix = np.linalg.inv(cam_to_world)
+
+        # Combine transformation matrices
+        world_to_screen = camera_to_screen @ projection @ view_matrix
+
         screen_vertices_list = []
         inv_depth_list = []
+
         for mesh in scene.meshes:
-            # HW 2.4 TODO: insert your code here and fill in the MVP matrix
-            # by using interpolate_transformation to compute the model matrix at time t
-            MVP = np.zeros((4, 4), dtype=np.float32)
-            ones = np.ones((mesh.vertices.shape[0], 1), dtype=mesh.vertices.dtype)
+            # Compute animated model transformation
+            if mesh.transform_keyframes:
+                transforms = interpolate_transformation(
+                    mesh.transform_keyframes, t
+                )
+                model_matrix = hw2_scene.compose_transformations(transforms)
+            else:
+                model_matrix = mesh.model_matrix
+
+            # Model-view-projection matrix
+            MVP = world_to_screen @ model_matrix
+
+            # Convert vertices to homogeneous coordinates
+            ones = np.ones(
+                (mesh.vertices.shape[0], 1),
+                dtype=mesh.vertices.dtype
+            )
             vertices = np.concatenate(
                 [mesh.vertices, ones],
                 axis=1
             )
-            # HW 2.4 TODO: insert your code here (basically the same as 2.3)
-            inv_depth_list.append(np.ascontiguousarray(vertices[:, 2]))
-            screen_vertices_list.append(np.ascontiguousarray(vertices[:, :2]))
 
-        
+            # Apply transformation
+            vertices = (MVP @ vertices.T).T
+
+            # Homogeneous coordinate division
+            vertices = vertices[:, :3] / vertices[:, 3:4]
+
+            # Store inverse depths and screen coordinates
+            inv_depth_list.append(
+                np.ascontiguousarray(vertices[:, 2])
+            )
+            screen_vertices_list.append(
+                np.ascontiguousarray(vertices[:, :2])
+            )
+
         # Clear color buffer
         command_encoder.clear_texture_float(
             color_image,
-            clear_value=spy.float4(scene.background[0],
-                                   scene.background[1], 
-                                   scene.background[2],
-                                   1.0)
+            clear_value=spy.float4(
+                scene.background[0],
+                scene.background[1],
+                scene.background[2],
+                1.0
+            )
         )
+
         # Clear depth buffer
         command_encoder.clear_texture_float(
             depth_image,
             clear_value=spy.float4(float("inf"), 0.0, 0.0, 0.0)
         )
+
+        # Rasterize all meshes
         for mesh_id in range(len(scene.meshes)):
             mesh = scene.meshes[mesh_id]
             screen_vertices = screen_vertices_list[mesh_id]
             inv_depth = inv_depth_list[mesh_id]
-            for tri_id in range(mesh.faces.shape[0]):
-                # HW 2.4 TODO: implement this
-                # (basically the same as HW 2.2 & 2.3)
 
+            for tri_id in range(mesh.faces.shape[0]):
+                # Get triangle vertex indices
+                i0, i1, i2 = mesh.faces[tri_id]
+
+                # Get screen coordinates
+                sp0 = screen_vertices[i0]
+                sp1 = screen_vertices[i1]
+                sp2 = screen_vertices[i2]
+
+                # Get inverse depths
+                inv_depth0 = inv_depth[i0]
+                inv_depth1 = inv_depth[i1]
+                inv_depth2 = inv_depth[i2]
+
+                # Get vertex colors
+                c0 = mesh.vertex_colors[i0]
+                c1 = mesh.vertex_colors[i1]
+                c2 = mesh.vertex_colors[i2]
+
+                # Calculate bounding box
+                aabb_min = (
+                    max(0, math.floor(min(sp0[0], sp1[0], sp2[0]))),
+                    max(0, math.floor(min(sp0[1], sp1[1], sp2[1])))
+                )
+
+                aabb_max = (
+                    min(width - 1, math.ceil(max(sp0[0], sp1[0], sp2[0]))),
+                    min(height - 1, math.ceil(max(sp0[1], sp1[1], sp2[1])))
+                )
+
+                # Skip triangles outside the screen
                 if aabb_min[0] > aabb_max[0] or aabb_min[1] > aabb_max[1]:
                     continue
 
-                shade_vars = {'sp0': sp0,
-                        'sp1': sp1,
-                        'sp2': sp2,
-                        'inv_depth0': inv_depth0,
-                        'inv_depth1': inv_depth1,
-                        'inv_depth2': inv_depth2,
-                        'aabb_min': aabb_min,
-                        'c0': c0,
-                        'c1': c1,
-                        'c2': c2,
-                        's': camera.s,
-                        'a': a}
+                # Shader parameters
+                shade_vars = {
+                    'sp0': sp0,
+                    'sp1': sp1,
+                    'sp2': sp2,
+                    'inv_depth0': inv_depth0,
+                    'inv_depth1': inv_depth1,
+                    'inv_depth2': inv_depth2,
+                    'aabb_min': aabb_min,
+                    'c0': c0,
+                    'c1': c1,
+                    'c2': c2,
+                    's': camera.s,
+                    'a': a
+                }
+
+                # Launch compute shader
                 compute_shader.kernel.dispatch(
-                    thread_count=[aabb_max[0] - aabb_min[0] + 1,
-                                  aabb_max[1] - aabb_min[1] + 1,
-                                  1],
+                    thread_count=[
+                        aabb_max[0] - aabb_min[0] + 1,
+                        aabb_max[1] - aabb_min[1] + 1,
+                        1
+                    ],
                     command_encoder=command_encoder,
                     color_image=color_image,
                     depth_image=depth_image,
                     **shade_vars
                 )
-                # Synchronize to avoid race conditions on the depth buffer
+
+                # Synchronize depth buffer
                 command_encoder.global_barrier()
 
-    if args.output == None:
+    if args.output is None:
         app = window.App(slang_device, color_image)
         vars = {'time': 0.0}
+
         def update(t, vars):
             vars['time'] = t
             return vars
@@ -461,10 +601,12 @@ def hw2_4(args):
             render_frame(command_encoder, vars['time'])
 
         app.run(vars, render, update)
+
     else:
         t = args.time % scene.duration if hasattr(args, 'time') else 0.0
         command_encoder = slang_device.create_command_encoder()
         render_frame(command_encoder, t)
+
         submit_id = slang_device.submit_command_buffer(
             command_encoder.finish()
         )
