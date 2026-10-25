@@ -676,13 +676,41 @@ def hw2_5(args):
 
     # HW 2.5 TODO: implement this (basically the same as 2.3 and 2.4)
     # change np.zeros into the right matrices
-    projection = np.zeros((4, 4), dtype=np.float32)
-    camera_to_screen = np.zeros((4, 4), dtype=np.float32)
+    
+    # Perspective projection matrix
+    projection = np.array([
+        [1, 0, 0, 0], 
+        [0, 1, 0, 0], 
+        [0, 0, 0, 1],
+        [0, 0, -1, 0]
+    ], dtype=np.float32)
+
+    # Convert projected coordinates to screen coordinates
+    camera_to_screen = np.array([
+        [width / (2 * camera.s * a), 0, 0, width / 2], 
+        [0, -height / (2 * camera.s), 0, height / 2], 
+        [0, 0, 1, 0],
+        [0, 0, 0, 1]
+    ], dtype=np.float32)
 
     def render_frame(command_encoder, t):
         t = t % scene.duration
         # HW 2.5 TODO: implement this (basically the same as 2.4)
-        world_to_screen = np.zeros((4, 4), dtype=np.float32)
+
+        # Compute animated camera transformation
+        if camera.transform_keyframes: 
+            transforms = interpolat_transformation(
+                camera.transform_keyframes, t
+            )
+            cam_to_world = hw2_scene.compose_transformations(transforms)
+        else: 
+            cam_to_world = camera.cam_to_world
+
+        # Convert world space to camera space
+        view_matrix = np.linalg.inv(cam_to_world)
+
+        # Combine transformation matrices
+        world_to_screen = camera_to_screen @ projection @ view_matrix
 
         command_encoder.clear_texture_float(
             color_image,
@@ -696,7 +724,19 @@ def hw2_5(args):
         # has a different model matrix
         for mesh, offset in zip(scene.meshes, vertex_offsets):
             # HW 2.5 TODO: implement this (basically the same as 2.4)
-            MVP = np.zeros((4, 4), dtype=np.float32)
+
+            # Compute animated model transformation
+            if mesh.transform_keyframes: 
+                transforms = interpolate_transformation(
+                    mesh.transform_keyframes, t
+                )
+                model_matrix = hw2_scene.compose_transformations(transforms)
+            else: 
+                model_matrix = mesh.model_matrix
+
+            # Model-view-projection matrix
+            MVP = world_to_screen @ model_matrix
+
             transform_vertices_shader.kernel.dispatch(\
                 thread_count=[mesh.vertices.shape[0], 1, 1],
                 command_encoder=command_encoder,
