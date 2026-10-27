@@ -51,11 +51,7 @@ The scene uses Phong lighting to create shading and depth, making the cake appea
   - `scenes/hw2/cake_cylinder.json`
   - `scenes/hw2/cake_sphere.json`
   - `scenes/hw2/cake_cone.json`
-- **Rendered images:**
-  - `outputs/cake_1.png`
-  - `outputs/cake_2.png`
-  - `outputs/cake_3.png`
-  - `outputs/purple_cake.png`
+- **Rendered image:** `outputs/purple_cake.png`
 
 ### 2. Ice Cream Scene
 
@@ -79,14 +75,10 @@ To run the animated birthday cake scene:
 uv run python main.py 2_7 scenes/hw2/purple_cake_scene.json
 ```
 
-To generate individual rendered images:
+To generate the rendered image:
 
 ```bash
-uv run python main.py --output outputs/cake_1.png 2_7 -time 0.0 scenes/hw2/purple_cake_scene.json
-
-uv run python main.py --output outputs/cake_2.png 2_7 -time 1.0 scenes/hw2/purple_cake_scene.json
-
-uv run python main.py --output outputs/cake_3.png 2_7 -time 2.0 scenes/hw2/purple_cake_scene.json
+uv run python main.py --output outputs/purple_cake.png 2_7 scenes/hw2/purple_cake_scene.json
 ```
 
 ### Ice Cream
@@ -108,6 +100,6 @@ uv run python main.py --output outputs/ice_cream.png 2_7 scenes/hw2/ice_cream_sc
 - **3D Meshes:** Constructed custom objects using geometric meshes.
 - **Transformations:** Used translation, rotation, and scaling to position and resize objects.
 - **Phong Lighting:** Applied ambient, diffuse, and specular lighting to shade the objects.
-- **Animation:** Used transformation keyframes to create movement in the scenes.
+- **Animation:** Used camera transformation keyframes to create movement around the birthday cake.
 - **Depth Testing:** Rendered overlapping 3D objects with proper depth handling.
 - **Materials:** Applied different colors and material properties to the 3D objects.
